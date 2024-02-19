@@ -1,7 +1,9 @@
 from setuptools import setup
 
+__version__="0.0.0"
+exec(open('version.py').read())
 setup(name='mindfultensors',
-      version='0.0.1',
+      version=__version__,
       author='Sergey Plis',
       author_email='s.m.plis@gmail.com',
       packages=['mindfultensors'],

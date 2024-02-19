@@ -1,1 +1,33 @@
- 
+name: Build and Deploy
+on:
+  push:
+    branches:
+      - master
+permissions:
+  contents: write
+  id-token: write
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Build Pypi Files
+        run: |  
+            pip install --upgrade setuptools
+            pip install wheel
+            pip install twine
+            git config --global user.name "${{secrets.GIT_USER}}"
+            git config --global user.email "${{secrets.GIT_GMAIL}}"
+            rm -rf build dist mindfultensors.egg-info
+            git stash
+            git fetch --all
+            git checkout version
+            bash version_update.sh
+            python3 setup.py sdist bdist_wheel
+
+      - name: Publish to Pypi
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+            password: ${{ secrets.PYPI_API }}
