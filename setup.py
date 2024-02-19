@@ -13,6 +13,7 @@ setup(name='mindfultensors',
           "numpy",
           "scipy >= 1.7",
           "pymongo >= 4.0",
+          "redis",
           "torch",
           ""],
     )
