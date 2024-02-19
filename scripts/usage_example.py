@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
-from mongoslabs.gencoords import CoordsGenerator
-from mongoslabs.mongoloader import (
+from mindfultensors.gencoords import CoordsGenerator
+from mindfultensors.mongoloader import (
     create_client,
     collate_subcubes,
     mcollate,
