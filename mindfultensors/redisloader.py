@@ -38,7 +38,6 @@ class RedisDataset(Dataset):
         transform,
         dbkey,
         normalize=unit_interval_normalize,
-        id="id",
     ):
         """Constructor
 
@@ -55,7 +54,6 @@ class RedisDataset(Dataset):
         self.transform = transform
         self.Redis = None
         self.normalize = normalize
-        self.id = id
 
     def __len__(self):
         return len(self.indices)
