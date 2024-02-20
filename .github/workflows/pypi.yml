@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Pypi Publish
 on:
   push:
     branches:
