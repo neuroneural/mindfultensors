@@ -2,6 +2,7 @@ import torch
 import io
 import numpy as np
 from typing import Sized
+from torch.utils.data.sampler import Sampler
 
 
 def unit_interval_normalize(img):
