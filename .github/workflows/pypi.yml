@@ -2,7 +2,7 @@ name: Pypi Publish
 on:
   push:
     branches:
-      - master
+      - main
 permissions:
   contents: write
   id-token: write
