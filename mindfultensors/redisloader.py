@@ -2,7 +2,6 @@ import pickle as pkl
 from redis import Redis
 
 from torch.utils.data import Dataset, get_worker_info
-from torch.utils.data.sampler import Sampler
 
 from .gencoords import CoordsGenerator
 from .utils import (
