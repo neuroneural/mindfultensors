@@ -52,6 +52,7 @@ class RedisDataset(Dataset):
         self.indices = indices
         self.transform = transform
         self.Redis = None
+        self.dbkey = dbkey
         self.normalize = normalize
 
     def __len__(self):
