@@ -60,7 +60,7 @@ class RedisDataset(Dataset):
 
     def __getitem__(self, batch):
         # Fetch all samples for ids in the batch and where 'kind' is either
-        # data or labela s specified by the sample parameter
+        # data or label as specified by the sample parameter
 
         results = {}
         for id in batch:
