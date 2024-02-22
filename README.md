@@ -12,8 +12,11 @@ atlas.
 
 # installation
 
-Eventually, the package will be placed on `pypy`, but for now, first
-clone the repo:
+The package is on `pypy` and the simplest way to install it is
+```
+pip install mindfultensors
+```
+However, to tinker with it you can also clone the repo:
 ```
 git clone git@github.com:neuroneural/mindfultensors.git
 ```
