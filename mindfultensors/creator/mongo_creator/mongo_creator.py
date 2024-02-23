@@ -18,11 +18,8 @@ from mindfultensors.creator.base_db_creator import BaseDBCreator
 
 class MongoDBCreator(BaseDBCreator):
     """
-    MongoDB creator class
+    MongoDB Creator class
     """
-    _meta_prefix = "meta"
-    _label_prefix = "label"
-    _input_prefix = "input"
 
     def __init__(
         self,
@@ -88,10 +85,13 @@ class MongoDBCreator(BaseDBCreator):
         Returns:
         None
         """
-        data = self._prepare_dataframe(
-            data, input_columns, label_columns, meta_columns
+        self._insert_samples(
+            data, 
+            input_columns,
+            label_columns,
+            meta_columns,
+            label_description=label_description
         )
-        self._insert_samples(data, label_description=label_description)
         index_name_meta = self._collection_meta.create_index([("id", ASCENDING)])
         index_name_bin = self._collection_bin.create_index([("id", ASCENDING)])
 
@@ -120,39 +120,12 @@ class MongoDBCreator(BaseDBCreator):
         """
         self._client.close()
 
-    def _prepare_dataframe(
+    def _insert_samples(
         self,
         data: pd.DataFrame,
         input_columns: List[str],
         label_columns: List[str],
         meta_columns: List[str],
-    ) -> pd.DataFrame:
-        """
-        Prepare dataframe
-
-        Args:
-        data: pd.DataFrame: data
-        input_columns: List[str]: list of input columns
-        label_columns: List[str]: list of label columns
-        meta_columns: List[str]: list of meta columns
-
-        Returns:
-        pd.DataFrame: prepared dataframe
-        """
-        new_columns = {
-            **{col: f"{self._input_prefix}_{col}" for col in input_columns},
-            **{col: f"{self._label_prefix}_{col}" for col in label_columns},
-            **{col: f"{self._meta_prefix}_{col}" for col in meta_columns},
-        }
-        data = data.rename(
-            columns=new_columns
-        )
-        selected_columns = new_columns.values()
-        return data[selected_columns]
-
-    def _insert_samples(
-        self,
-        data: pd.DataFrame,
         label_description: Optional[Dict[str, str]] = None,
     ) -> None:
         """
@@ -165,29 +138,27 @@ class MongoDBCreator(BaseDBCreator):
         Returns:
         None
         """
+        selected_columns = input_columns + label_columns + meta_columns
         for index in tqdm(data.index):
             meta_data = {"id": index, "labels": {}}
-            for column in data.columns:
+            for column in selected_columns:
                 shape = None
                 value = data[column].iloc[index]
-                if column.startswith(self._meta_prefix):
+                if column in meta_columns:
                     meta_data[column] = str(value)
-                elif (
-                    column.startswith(self._input_prefix) or \
-                    column.startswith(self._label_prefix)
-                ):
+                else:
                     shape = self._insert_data(column, value, index)
                     if "shape" not in meta_data:
                         meta_data["shape"] = shape
                     else:
                         assert meta_data["shape"] == shape
-                    if column.startswith(self._label_prefix):
+                    if column in label_columns:
                         if column in label_description:
-                            meta_data["labels"][column] = label_description[column]
+                            meta_data["labels"][
+                                column] = label_description[column]
                         else:
-                            meta_data["labels"][column] = "Label is not described"
-                else:
-                    raise NotImplementedError(f"Column {column} is missing prefix.")
+                            meta_data["labels"][
+                                column] = "Label is not described"
             self._collection_meta.insert_one(meta_data)
 
     def _insert_data(
