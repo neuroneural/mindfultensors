@@ -1,4 +1,4 @@
-s = [0, 0, 5]
+s = [0, 0, 6]
 v = []
 for i in range(0,101):
     v.append(i)
