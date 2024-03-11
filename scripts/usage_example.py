@@ -5,7 +5,7 @@ from mindfultensors.mongoloader import (
     create_client,
     collate_subcubes,
     mcollate,
-    MBatchSampler,
+    DBBatchSampler,
     MongoDataset,
     MongoClient,
     mtransform,
