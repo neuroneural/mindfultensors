@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+import time
 from torch.utils.data import Dataset, get_worker_info
 from torch.utils.data.sampler import Sampler
 
@@ -91,6 +92,7 @@ class MongoDataset(Dataset):
                             print(
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
                             )
+                            time.sleep(1)
                             continue
                         else:
                             raise e
