@@ -108,7 +108,7 @@ class MongoDataset(Dataset):
         # Fetch all samples for ids in the batch and where 'kind' is either
         # data or label as specified by the sample parameter
         samples = list(
-            self.collection["bin"].find(
+            self.collection["db"][self.collection["bin"]].find(
                 {
                     self.id: {"$in": [self.indices[_] for _ in batch]},
                     "kind": {"$in": self.sample},
@@ -140,14 +140,14 @@ class MongoDataset(Dataset):
 
 
 def name2collections(name: str, database):
-    collection_bin = database[f"{name}.bin"]
-    collection_meta = database[f"{name}.meta"]
-    return collection_bin, collection_meta
+    collection_bin = f"{name}.bin"
+    collection_meta = f"{name}.meta"
+    return database, collection_bin, collection_meta
 
 
 def create_client(worker_id, dbname, colname, mongohost):
     worker_info = get_worker_info()
     dataset = worker_info.dataset
     client = MongoClient("mongodb://" + mongohost + ":27017")
-    colbin, colmeta = name2collections(colname, client[dbname])
-    dataset.collection = {"bin": colbin, "meta": colmeta}
+    db, colbin, colmeta = name2collections(colname, client[dbname])
+    dataset.collection = {"bin": colbin, "meta": colmeta, "db": db}
