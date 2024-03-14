@@ -93,10 +93,11 @@ class MongoDataset(Dataset):
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
                             )
                             time.sleep(2)
+                            myException = e
                             continue
                         else:
                             raise e
-                raise e("Failed after multiple retries.")
+                raise myException("Failed after multiple retries.")
 
             return wrapper
 
