@@ -96,6 +96,7 @@ class MongoDataset(Dataset):
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
                             )
                             time.sleep(1)
+                            print(batch)
                             shift = 2
                             myException = e
                             continue
