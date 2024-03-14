@@ -109,7 +109,7 @@ class MongoDataset(Dataset):
 
         return decorator
 
-    @retry_on_eof_error(retry_count=3)  # Retry up to 3 times
+    @retry_on_eof_error(retry_count=3, verbose=True)  # Retry up to 3 times
     def __getitem__(self, batch):
         # Fetch all samples for ids in the batch and where 'kind' is either
         # data or label as specified by the sample parameter
