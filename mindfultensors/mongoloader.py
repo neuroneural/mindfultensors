@@ -80,7 +80,7 @@ class MongoDataset(Dataset):
             ]
         )
 
-    def retry_on_eof_error(self, retry_count):
+    def retry_on_eof_error(retry_count):
         def decorator(func):
             def wrapper(self, batch, *args, **kwargs):
                 for _ in range(retry_count):
