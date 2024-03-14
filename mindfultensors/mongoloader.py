@@ -84,15 +84,19 @@ class MongoDataset(Dataset):
     def retry_on_eof_error(retry_count):
         def decorator(func):
             def wrapper(self, batch, *args, **kwargs):
+                shift = 0
                 for _ in range(retry_count):
                     try:
-                        return func(self, batch, *args, **kwargs)
+                        return func(
+                            self, [x - shift for x in batch], *args, **kwargs
+                        )
                     except Exception as e:
                         if self.keeptyring:
                             print(
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
                             )
                             time.sleep(2)
+                            shift = 1
                             myException = e
                             continue
                         else:
