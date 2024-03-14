@@ -112,5 +112,5 @@ class DBBatchSampler(Sampler):
 
     def __len__(self):
         return (
-            self.data_size + self.batch_size - 1
+            len(self.data_source) + self.batch_size - 1
         ) // self.batch_size  # Number of batches
