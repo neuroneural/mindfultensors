@@ -38,6 +38,7 @@ class MongoDataset(Dataset):
         sample,
         normalize=unit_interval_normalize,
         id="id",
+        persist_on_EOF=False,
     ):
         """Constructor
 
@@ -45,11 +46,12 @@ class MongoDataset(Dataset):
         :param transform: a function to be applied to each extracted record
         :param collection: pymongo collection to be used
         :param sample: a pair of fields to be fetched as `input` and `label`, e.g. (`T1`, `label104`)
+        :param normalize: a function to apply to the input
         :param id: the field to be used as an index. The `indices` are values of this field
+        :param persist_on_EOF: whether to keep trying if deserialization fails
         :returns: an object of MongoDataset class
 
         """
-
         self.indices = indices
         self.transform = transform
         self.collection = collection
@@ -58,6 +60,7 @@ class MongoDataset(Dataset):
         self.sample = sample
         self.normalize = normalize
         self.id = id
+        self.keeptyring = persist_on_EOF
 
     def __len__(self):
         return len(self.indices)
@@ -77,6 +80,27 @@ class MongoDataset(Dataset):
             ]
         )
 
+    def retry_on_eof_error(self, retry_count):
+        def decorator(func):
+            def wrapper(self, batch, *args, **kwargs):
+                for _ in range(retry_count):
+                    try:
+                        return func(self, batch, *args, **kwargs)
+                    except EOFError as e:
+                        if self.keeptyring:
+                            print(
+                                f"EOFError caught. Retrying {_+1}/{retry_count}"
+                            )
+                            continue
+                        else:
+                            raise e
+                raise EOFError("Failed after multiple retries.")
+
+            return wrapper
+
+        return decorator
+
+    @retry_on_eof_error(retry_count=3)  # Retry up to 3 times
     def __getitem__(self, batch):
         # Fetch all samples for ids in the batch and where 'kind' is either
         # data or label as specified by the sample parameter
