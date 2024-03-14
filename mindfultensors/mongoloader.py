@@ -87,17 +87,17 @@ class MongoDataset(Dataset):
                 shift = 0
                 for _ in range(retry_count):
                     try:
-                        return func(
-                            self, [x - shift for x in batch], *args, **kwargs
-                        )
+                        return func(self, batch, *args, **kwargs)
                     except Exception as e:
                         if self.keeptyring:
                             print(
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
                             )
                             time.sleep(1)
-                            print([self.indices[x] for x in batch])
-                            shift = 2
+                            batch = [0]
+                            self.indices = self.collection["db"][
+                                self.collection["bin"]
+                            ].distinct("id")
                             myException = e
                             continue
                         else:
