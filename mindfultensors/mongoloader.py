@@ -81,7 +81,7 @@ class MongoDataset(Dataset):
             ]
         )
 
-    def retry_on_eof_error(retry_count):
+    def retry_on_eof_error(retry_count, verbose=False):
         def decorator(func):
             def wrapper(self, batch, *args, **kwargs):
                 shift = 0
@@ -90,9 +90,10 @@ class MongoDataset(Dataset):
                         return func(self, batch, *args, **kwargs)
                     except Exception as e:
                         if self.keeptyring:
-                            print(
-                                f"EOFError caught. Retrying {_+1}/{retry_count}"
-                            )
+                            if verbose:
+                                print(
+                                    f"EOFError caught. Retrying {_+1}/{retry_count}"
+                                )
                             time.sleep(1)
                             batch = [0]
                             self.indices = self.collection["db"][
@@ -108,7 +109,7 @@ class MongoDataset(Dataset):
 
         return decorator
 
-    @retry_on_eof_error(retry_count=10)  # Retry up to 3 times
+    @retry_on_eof_error(retry_count=3)  # Retry up to 3 times
     def __getitem__(self, batch):
         # Fetch all samples for ids in the batch and where 'kind' is either
         # data or label as specified by the sample parameter
