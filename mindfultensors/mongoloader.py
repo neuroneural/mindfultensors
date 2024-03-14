@@ -87,7 +87,7 @@ class MongoDataset(Dataset):
                 for _ in range(retry_count):
                     try:
                         return func(self, batch, *args, **kwargs)
-                    except EOFError as e:
+                    except Exception as e:
                         if self.keeptyring:
                             print(
                                 f"EOFError caught. Retrying {_+1}/{retry_count}"
