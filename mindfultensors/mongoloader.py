@@ -95,10 +95,6 @@ class MongoDataset(Dataset):
                                     f"EOFError caught. Retrying {_+1}/{retry_count}"
                                 )
                             time.sleep(1)
-                            batch = [0]
-                            self.indices = self.collection["db"][
-                                self.collection["bin"]
-                            ].distinct("id")
                             myException = e
                             continue
                         else:
