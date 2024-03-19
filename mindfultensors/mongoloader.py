@@ -112,6 +112,57 @@ class MongoDataset(Dataset):
         return results
 
 
+class MongoheadDataset(MongoDataset):
+    def __init__(self, *args, keeptrying=True, **kwargs):
+        """Constructor
+
+        :param indices: a set of indices to be extracted from the collection
+        :param transform: a function to be applied to each extracted record
+        :param collection: pymongo collection to be used
+        :param sample: a pair of fields to be fetched as `input` and `label`, e.g. (`T1`, `label104`)
+        :param id: the field to be used as an index. The `indices` are values of this field
+        :param keeptrying: whether to keep retrying to fetch a record if the process failed or just report this and fail
+        :returns: an object of MongoDataset class
+
+        """
+
+        super().__init__(*args, **kwargs)
+        self.keeptrying = keeptrying  # Initialize the keeptrying attribute
+
+    def retry_on_eof_error(retry_count, verbose=False):
+        def decorator(func):
+            def wrapper(self, batch, *args, **kwargs):
+                myException = Exception  # Default Exception if not overwritten
+                for attempt in range(retry_count):
+                    try:
+                        return func(self, batch, *args, **kwargs)
+                    except (
+                        EOFError,
+                        OperationFailure,
+                    ) as e:  # Specifically catching EOFError
+                        if self.keeptrying:
+                            if verbose:
+                                print(
+                                    f"EOFError caught. Retrying {attempt+1}/{retry_count}"
+                                )
+                            time.sleep(1)
+                            myException = e
+                            continue
+                        else:
+                            raise e
+                raise myException("Failed after multiple retries.")
+
+            return wrapper
+
+        return decorator
+
+    @retry_on_eof_error(retry_count=3, verbose=True)
+    def __getitem__(self, batch):
+        # Directly use the parent class's __getitem__ method
+        # The decorator will handle exceptions
+        return super().__getitem__(batch)
+
+
 def name2collections(name: str, database):
     collection_bin = database[f"{name}.bin"]
     collection_meta = database[f"{name}.meta"]
