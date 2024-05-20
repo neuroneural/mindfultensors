@@ -102,7 +102,6 @@ class MongoDataset(Dataset):
             # Separate processing for each 'kind'
             data = self.make_serial(samples_for_id, self.sample[0])
             label = self.make_serial(samples_for_id, self.sample[1])
-
             # Add to results
             results[id] = {
                 "input": self.normalize(self.transform(data).float()),

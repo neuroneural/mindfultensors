@@ -73,17 +73,16 @@ def chunk_binobj(
 def nifti_filename_2_tensor(filename: str) -> Tensor:
     """
     Convert NIFTI filename to tensor
-    
+
     Args:
     filename: str: filename of NIFTI file
-    
+
     Returns:
     Tensor: tensor
     """
     assert os.path.exists(filename)
     assert filename.endswith(".nii") or filename.endswith(".nii.gz")
-    return torch.from_numpy(np.asanyarray(nib.load(filename).dataobj))
-
+    return torch.from_numpy(np.asanyarray(nib.load(filename).get_fdata()))
 
 
 def insert_data(
@@ -110,7 +109,7 @@ def insert_data(
     """
     tensor_data = nifti_filename_2_tensor(filename)
     shape = tensor_data.shape
-    if column in preprocessing_functions:
+    if preprocessing_functions and column in preprocessing_functions:
         tensor_data = preprocessing_functions[column](tensor_data)
     tensor_data = tensor_2_bin(tensor_data)
     # write data
@@ -157,7 +156,7 @@ def insert_samples(
                 meta_data[column] = str(value)
             else:
                 shape = insert_data(
-                    column, value, index, 
+                    column, value, index,
                     collection_bin, chunk_size, preprocessing_functions=preprocessing_functions
                 )
                 if "shape" not in meta_data:

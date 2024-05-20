@@ -6,8 +6,7 @@ from pymongo import MongoClient, ASCENDING
 
 from mindfultensors.utils import unit_interval_normalize as normalize
 from mindfultensors.creator.base_db_creator import BaseDBCreator
-
-from utils import insert_samples
+from mindfultensors.creator.mongo_creator.utils import insert_samples
 
 
 class MongoDBCreator(BaseDBCreator):
@@ -80,7 +79,7 @@ class MongoDBCreator(BaseDBCreator):
         None
         """
         insert_samples(
-            data, 
+            data,
             input_columns,
             label_columns,
             meta_columns,
@@ -140,8 +139,8 @@ if __name__ == "__main__":
         host=mongo_host,
         port=mongo_port,
         preprocessing_functions={
-            't1': lambda x: normalize(x) * 256,
-            't2': lambda x: normalize(x) * 256,
+            't1': lambda x: normalize(x) * 255,
+            't2': lambda x: normalize(x) * 255,
         },
         chunk_size=10,
     )
@@ -151,7 +150,14 @@ if __name__ == "__main__":
         input_columns=['t1'],
         label_columns=['t2'],
         meta_columns=['subject_id', 'age', 'gender'],
-        label_description={"mask": "Lesion mask"}
+        label_description={"t2": "Lesion mask"}
     )
+    sample_doc = creator._collection_bin.find_one({"kind": "t2"})
+    print (sample_doc.keys())
+    print (sample_doc['chunk_id'])
+    print (len(sample_doc['chunk']))
+    print (sample_doc['kind'])
+    print (int(creator._collection_bin.find_one(sort=[('id', -1)])['id'] + 1))
+    num_examples = int(creator._collection_bin.find_one(sort=[("id", -1)])["id"] + 1)
     creator.clean()
     creator.close()
