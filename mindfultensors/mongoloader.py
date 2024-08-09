@@ -141,6 +141,7 @@ class MongoheadDataset(MongoDataset):
                     except (
                         EOFError,
                         OperationFailure,
+                        RuntimeError,
                     ) as e:  # Specifically catching EOFError
                         if self.keeptrying:
                             if verbose:
@@ -158,7 +159,7 @@ class MongoheadDataset(MongoDataset):
 
         return decorator
 
-    @retry_on_eof_error(retry_count=3, verbose=True)
+    @retry_on_eof_error(retry_count=10, verbose=True)
     def __getitem__(self, batch):
         # Directly use the parent class's __getitem__ method
         # The decorator will handle exceptions
