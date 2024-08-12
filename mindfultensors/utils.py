@@ -19,7 +19,7 @@ def qnormalize(img, qmin=0.01, qmax=0.99):
 
 def mtransform(tensor_binary):
     buffer = io.BytesIO(tensor_binary)
-    tensor = torch.load(buffer)
+    tensor = torch.load(buffer, weights_only=True)
     return tensor
 
 
