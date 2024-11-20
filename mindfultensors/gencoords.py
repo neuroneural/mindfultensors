@@ -32,16 +32,16 @@ class CoordsGenerator:
             mus = np.array(
                 [
                     self.volume_shape[0] // 2,
-                    self.volume_shape[0] // 2,
-                    self.volume_shape[0] // 2,
+                    self.volume_shape[1] // 2,
+                    self.volume_shape[2] // 2,
                 ]
             )
         if sigmas is None:
             sigmas = np.array(
                 [
                     self.volume_shape[0] // 4,
-                    self.volume_shape[0] // 4,
-                    self.volume_shape[0] // 4,
+                    self.volume_shape[1] // 4,
+                    self.volume_shape[2] // 4,
                 ]
             )
         self.truncnorm_coordinates = truncnorm(

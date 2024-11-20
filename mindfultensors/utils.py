@@ -86,7 +86,7 @@ class DBBatchSampler(Sampler):
 
     data_source: Sized
 
-    def __init__(self, data_source, batch_size=1, seed=None):
+    def __init__(self, data_source, batch_size=1, seed=None, shuffle=True):
         """TODO describe function
 
         :param data_source: a dataset of Dataset class
@@ -98,6 +98,7 @@ class DBBatchSampler(Sampler):
         self.data_source = data_source
         self.data_size = len(self.data_source)
         self.seed = seed
+        self.shuffle = shuffle
 
     def __chunks__(self, l, n):
         for i in range(0, len(l), n):
@@ -106,9 +107,12 @@ class DBBatchSampler(Sampler):
     def __iter__(self):
         if self.seed is not None:
             np.random.seed(self.seed)
-        return self.__chunks__(
-            np.random.permutation(self.data_size), self.batch_size
-        )
+        if self.shuffle:
+            return self.__chunks__(
+                np.random.permutation(self.data_size), self.batch_size
+            )
+        else:
+            return self.__chunks__(range(self.data_size), self.batch_size)
 
     def __len__(self):
         return (
