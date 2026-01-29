@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from torch.utils.data import Dataset, get_worker_info
 from torch.utils.data.sampler import Sampler
+from torch import tensor, stack
 from pymongo.errors import OperationFailure
 import time
 
@@ -37,7 +38,8 @@ class MongoDataset(Dataset):
         indices,
         transform,
         collection,
-        sample,
+        bin_sample = [],
+        meta_sample = [],
         normalize=unit_interval_normalize,
         id="id",
     ):
@@ -46,18 +48,21 @@ class MongoDataset(Dataset):
         :param indices: a set of indices to be extracted from the collection
         :param transform: a function to be applied to each extracted record
         :param collection: pymongo collection to be used
-        :param sample: a pair of fields to be fetched as `input` and `label`, e.g. (`T1`, `label104`)
+        :param bin_sample: list of fields to be fetched from 'bin' collection (stores chunked data, e.g., 'smri', 'dwi'),
+        :param meta_sample: list of fields to be fetched from 'meta' collection (stores meta data, e.g., 'gender_encoded', 'modalities'),
         :param id: the field to be used as an index. The `indices` are values of this field
         :returns: an object of MongoDataset class
 
         """
+        assert len(bin_sample) > 0 or len(meta_sample) > 0, "At least one of bin_sample or meta_sample must be non-empty"
 
         self.indices = indices
         self.transform = transform
         self.collection = collection
         # self.fields = {_: 1 for _ in self.fields} if fields is not None else {}
         self.fields = {"id": 1, "chunk": 1, "kind": 1, "chunk_id": 1}
-        self.sample = sample
+        self.bin_sample = bin_sample
+        self.meta_sample = meta_sample
         self.normalize = normalize
         self.id = id
 
@@ -82,36 +87,89 @@ class MongoDataset(Dataset):
     def __getitem__(self, batch):
         # Fetch all samples for ids in the batch and where 'kind' is either
         # data or label as specified by the sample parameter
-        samples = list(
-            self.collection["bin"].find(
-                {
-                    self.id: {"$in": [self.indices[_] for _ in batch]},
-                    "kind": {"$in": self.sample},
-                },
-                self.fields,
+
+        bin_is_empty = len(self.bin_sample) == 0
+        meta_is_empty = len(self.meta_sample) == 0
+
+
+        if not bin_is_empty:
+            bin_samples = list(
+                self.collection["bin"].find(
+                    {
+                        self.id: {"$in": [self.indices[_] for _ in batch]},
+                        "kind": {"$in": self.bin_sample},
+                    },
+                    self.fields,
+                )
             )
-        )
+        if not meta_is_empty:
+            meta_samples = list(
+                self.collection["meta"].find(
+                    {
+                        self.id: {"$in": [self.indices[_] for _ in batch]},
+                    },
+                    list(self.meta_sample)+ [self.id],
+                )
+            )
 
         results = {}
         for id in batch:
-            # Separate samples for this id
-            samples_for_id = [
-                sample
-                for sample in samples
-                if sample[self.id] == self.indices[id]
-            ]
+            results[id] = {}
 
-            # Separate processing for each 'kind'
-            data = self.make_serial(samples_for_id, self.sample[0])
-            label = self.make_serial(samples_for_id, self.sample[1])
+            # Proc bin
+            if not bin_is_empty:
+                bin_for_id = [
+                    sample
+                    for sample in bin_samples
+                    if sample[self.id] == self.indices[id]
+                ]
 
-            # Add to results
-            results[id] = {
-                "input": self.normalize(self.transform(data).float()),
-                "label": self.transform(label),
-            }
+                for kind in self.bin_sample:
+                    data = self.make_serial(bin_for_id, kind)
+                    results[id][kind] = self.normalize(self.transform(data).float())
+
+            # Proc meta
+            if not meta_is_empty:
+                meta_for_id = [
+                    sample
+                    for sample in meta_samples
+                    if sample[self.id] == self.indices[id]
+                ]
+
+                assert len(meta_for_id) != 0, f"No meta entries found for id {id}"
+                assert len(meta_for_id) < 2, f"More than one meta entry found for id {id}"
+                meta_for_id = meta_for_id[0]
+
+                for kind in self.meta_sample:
+                    label = meta_for_id[kind]
+                    try:
+                        label = tensor(label)
+                    except Exception as e:
+                        # Can't tensor-ize, raise error with details
+                        raise ValueError(f"Cannot convert label for kind '{kind}' and id '{id}' to tensor. Value: {label}. Original error: {e}")
+                    if label.ndim == 0:
+                        label = label.unsqueeze(0)
+                        
+                    results[id][kind] = label
 
         return results
+    
+    def default_collate(self, results):
+        """
+        Returns a collated batch from results fetched by __getitem__.
+        The order of outputs corresponds to the order of fields in self.bin_sample+self.meta_sample.
+        Not guaranteed to work for any self.bin_sample or self.meta_sample, know what you're fetching.
+        """
+        results = results[0] # because something wraps outputs in a list? mystery...
+
+        output = []
+        for kind in list(self.bin_sample):
+            output.append(stack([results[id_][kind] for id_ in results.keys()]).unsqueeze(1))
+        
+        for kind in list(self.meta_sample):
+            output.append(stack([results[id_][kind] for id_ in results.keys()]).long())
+        
+        return tuple(output)
 
 
 class MongoheadDataset(MongoDataset):
