@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Scratch dev file — unified classes now live in mongoloader.py
+mindfultensors/mongoloader_unified.py
+
 # C extensions
 *.so
 

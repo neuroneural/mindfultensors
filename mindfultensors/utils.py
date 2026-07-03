@@ -1,6 +1,7 @@
 import lz4.frame
 import torch
 import io
+import bson
 import numpy as np
 from typing import Sized
 from torch.utils.data.sampler import Sampler
@@ -29,6 +30,52 @@ def mtransform(tensor_binary):
     buffer = io.BytesIO(tensor_binary)
     tensor = torch.load(buffer, weights_only=True)
     return tensor
+
+
+def tensor2bin(tensor):
+    """Serialize a tensor to a binary blob."""
+    buffer = io.BytesIO()
+    torch.save(tensor, buffer)
+    return buffer.getvalue()
+
+
+def insert_kind(collection, subject_id, kind, value, id_field="id", chunk_size_mb=10):
+    """Insert a kind (tensor or scalar) into a unified collection.
+
+    :param collection: pymongo collection to insert into
+    :param subject_id: the subject's index value, stored under `id_field`
+    :param kind: the kind name, e.g. `smri` or `age`
+    :param value: a tensor (chunked and stored as binary) or a scalar (int/float/bool)
+    :param id_field: the field name to store subject_id under
+    :param chunk_size_mb: chunk size in MB for tensor kinds
+    """
+    if torch.is_tensor(value):
+        _insert_tensor_kind(collection, subject_id, kind, value, id_field, chunk_size_mb)
+    else:
+        collection.insert_one({
+            id_field: subject_id,
+            "kind":   kind,
+            "dtype":  type(value).__name__,
+            "value":  value,
+        })
+
+
+def _insert_tensor_kind(collection, subject_id, kind, tensor, id_field, chunk_size_mb):
+    binary           = tensor2bin(tensor)
+    chunk_size_bytes = chunk_size_mb * 1024 * 1024
+    num_chunks       = (len(binary) + chunk_size_bytes - 1) // chunk_size_bytes
+    docs = []
+    for chunk_id in range(num_chunks):
+        start = chunk_id * chunk_size_bytes
+        end   = min(start + chunk_size_bytes, len(binary))
+        docs.append({
+            id_field:   subject_id,
+            "kind":     kind,
+            "dtype":    "tensor",
+            "chunk_id": chunk_id,
+            "chunk":    bson.Binary(binary[start:end]),
+        })
+    collection.insert_many(docs)
 
 
 def mcollate(results, field=("input", "label")):

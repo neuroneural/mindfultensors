@@ -1,3 +1,4 @@
+import torch
 from pymongo import MongoClient
 from torch.utils.data import Dataset, get_worker_info
 from torch.utils.data.sampler import Sampler
@@ -15,6 +16,13 @@ from .utils import (
     DBBatchSampler,
 )
 
+DEFAULT_TRANSFORMS = {
+    "tensor": mtransform,
+    "int":    lambda x: torch.tensor(x, dtype=torch.long),
+    "float":  lambda x: torch.tensor(x, dtype=torch.float32),
+    "bool":   lambda x: torch.tensor(x, dtype=torch.bool),
+}
+
 __all__ = [
     "unit_interval_normalize",
     "qnormalize",
@@ -23,93 +31,91 @@ __all__ = [
     "collate_subcubes",
     "subcube_list",
     "MongoDataset",
+    "MongoheadDataset",
+    "name2collection",
+    "create_client",
     "DBBatchSampler",
 ]
 
 
 class MongoDataset(Dataset):
     """
-    A dataset for fetching batches of records from a MongoDB
+    A dataset for fetching batches of records from a single MongoDB collection
     """
 
     def __init__(
         self,
         indices,
-        transform,
         collection,
-        sample,
+        fetch,
+        transforms=None,
         normalize=unit_interval_normalize,
+        fields=None,
         id="id",
     ):
         """Constructor
 
         :param indices: a set of indices to be extracted from the collection
-        :param transform: a function to be applied to each extracted record
         :param collection: pymongo collection to be used
-        :param sample: a pair of fields to be fetched as `input` and `label`, e.g. (`T1`, `label104`)
+        :param fetch: a tuple of kind names to be fetched, e.g. (`smri`, `gender_encoded`). Supports both chunk kinds (tensors) and scalar kinds (single value docs)
+        :param transforms: optional dict mapping dtype strings to transform functions, e.g. `{"int": lambda x: torch.tensor(x, dtype=torch.long)}`. Overrides DEFAULT_TRANSFORMS for the specified dtype.
+        :param normalize: a function to be applied to each tensor kind after transform
+        :param fields: optional MongoDB projection dict, e.g. `{"id": 1, "kind": 1, "chunk": 1}`. Fetches all fields if not specified.
         :param id: the field to be used as an index. The `indices` are values of this field
         :returns: an object of MongoDataset class
 
         """
+        if not fetch:
+            raise ValueError("fetch must be a non-empty tuple of kind names")
 
         self.indices = indices
-        self.transform = transform
         self.collection = collection
-        # self.fields = {_: 1 for _ in self.fields} if fields is not None else {}
-        self.fields = {"id": 1, "chunk": 1, "kind": 1, "chunk_id": 1}
-        self.sample = sample
+        self.fetch = tuple(fetch)
+        self.transforms = {**DEFAULT_TRANSFORMS, **(transforms or {})}
         self.normalize = normalize
+        self.fields = fields or {}
         self.id = id
+
+        collection.create_index([(id, 1), ("kind", 1)])
 
     def __len__(self):
         return len(self.indices)
 
-    def make_serial(self, samples_for_id, kind):
-        return b"".join(
-            [
-                sample["chunk"]
-                for sample in sorted(
-                    (
-                        sample
-                        for sample in samples_for_id
-                        if sample["kind"] == kind
-                    ),
-                    key=lambda x: x["chunk_id"],
-                )
-            ]
-        )
+    def make_serial(self, kind_docs):
+        ordered = [None] * len(kind_docs)
+        for doc in kind_docs:
+            ordered[doc["chunk_id"]] = doc["chunk"]
+        return b"".join(ordered)
 
     def __getitem__(self, batch):
-        # Fetch all samples for ids in the batch and where 'kind' is either
-        # data or label as specified by the sample parameter
-        samples = list(
-            self.collection["bin"].find(
-                {
-                    self.id: {"$in": [self.indices[_] for _ in batch]},
-                    "kind": {"$in": self.sample},
-                },
-                self.fields,
-            )
-        )
+        batch_ids = [self.indices[i] for i in batch]
+        docs = list(self.collection.find(
+            {self.id: {"$in": batch_ids}, "kind": {"$in": list(self.fetch)}},
+            self.fields or None,
+        ))
+
+        grouped = {}
+        for doc in docs:
+            key = (doc[self.id], doc["kind"])
+            if key not in grouped:
+                grouped[key] = []
+            grouped[key].append(doc)
 
         results = {}
-        for id in batch:
-            # Separate samples for this id
-            samples_for_id = [
-                sample
-                for sample in samples
-                if sample[self.id] == self.indices[id]
-            ]
-
-            # Separate processing for each 'kind'
-            data = self.make_serial(samples_for_id, self.sample[0])
-            label = self.make_serial(samples_for_id, self.sample[1])
-
-            # Add to results
-            results[id] = {
-                "input": self.normalize(self.transform(data).float()),
-                "label": self.transform(label),
-            }
+        for idx in batch:
+            subject_id = self.indices[idx]
+            results[idx] = {}
+            for kind in self.fetch:
+                kind_docs = grouped.get((subject_id, kind), [])
+                if not kind_docs:
+                    continue
+                dtype = kind_docs[0]["dtype"]
+                t = self.transforms.get(dtype, lambda x: x)
+                if dtype == "tensor":
+                    binary = self.make_serial(kind_docs)
+                    results[idx][kind] = self.normalize(t(binary).float())
+                else:
+                    results[idx][kind] = t(kind_docs[0]["value"])
 
         return results
 
@@ -119,15 +125,14 @@ class MongoheadDataset(MongoDataset):
         """Constructor
 
         :param indices: a set of indices to be extracted from the collection
-        :param transform: a function to be applied to each extracted record
         :param collection: pymongo collection to be used
-        :param sample: a pair of fields to be fetched as `input` and `label`, e.g. (`T1`, `label104`)
+        :param fetch: a tuple of kind names to be fetched, e.g. (`smri`, `gender_encoded`)
+        :param transforms: optional dict mapping dtype strings to transform functions
         :param id: the field to be used as an index. The `indices` are values of this field
         :param keeptrying: whether to keep retrying to fetch a record if the process failed or just report this and fail
-        :returns: an object of MongoDataset class
+        :returns: an object of MongoheadDataset class
 
         """
-
         super().__init__(*args, **kwargs)
         self.keeptrying = keeptrying  # Initialize the keeptrying attribute
 
@@ -166,15 +171,12 @@ class MongoheadDataset(MongoDataset):
         return super().__getitem__(batch)
 
 
-def name2collections(name: str, database):
-    collection_bin = database[f"{name}.bin"]
-    collection_meta = database[f"{name}.meta"]
-    return collection_bin, collection_meta
+def name2collection(name, database):
+    return database[name]
 
 
 def create_client(worker_id, dbname, colname, mongohost):
     worker_info = get_worker_info()
     dataset = worker_info.dataset
     client = MongoClient("mongodb://" + mongohost + ":27017")
-    colbin, colmeta = name2collections(colname, client[dbname])
-    dataset.collection = {"bin": colbin, "meta": colmeta}
+    dataset.collection = name2collection(colname, client[dbname])
