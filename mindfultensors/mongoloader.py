@@ -16,11 +16,30 @@ from .utils import (
     DBBatchSampler,
 )
 
+
+# Named callables (not lambdas) so MongoDataset is picklable under
+# DataLoader(num_workers > 0) / multiprocessing spawn.
+def _as_long(x):
+    return torch.tensor(x, dtype=torch.long)
+
+
+def _as_float(x):
+    return torch.tensor(x, dtype=torch.float32)
+
+
+def _as_bool(x):
+    return torch.tensor(x, dtype=torch.bool)
+
+
+def _identity(x):
+    return x
+
+
 DEFAULT_TRANSFORMS = {
     "tensor": mtransform,
-    "int":    lambda x: torch.tensor(x, dtype=torch.long),
-    "float":  lambda x: torch.tensor(x, dtype=torch.float32),
-    "bool":   lambda x: torch.tensor(x, dtype=torch.bool),
+    "int": _as_long,
+    "float": _as_float,
+    "bool": _as_bool,
 }
 
 __all__ = [
@@ -56,7 +75,10 @@ class MongoDataset(Dataset):
         """Constructor
 
         :param indices: a set of indices to be extracted from the collection
-        :param collection: pymongo collection to be used
+        :param collection: pymongo collection to be used, or None. When None,
+            callers (e.g. DataLoader worker_init_fn / create_client) must attach
+            a live collection before __getitem__. Pass a collection at init only
+            to create indexes, then clear it before pickling into workers.
         :param fetch: a tuple of kind names to be fetched, e.g. (`smri`, `gender_encoded`). Supports both chunk kinds (tensors) and scalar kinds (single value docs)
         :param transforms: optional dict mapping dtype strings to transform functions, e.g. `{"int": lambda x: torch.tensor(x, dtype=torch.long)}`. Overrides DEFAULT_TRANSFORMS for the specified dtype.
         :param normalize: a function to be applied to each tensor kind after transform
@@ -76,7 +98,11 @@ class MongoDataset(Dataset):
         self.fields = fields or {}
         self.id = id
 
-        collection.create_index([(id, 1), ("kind", 1)])
+        # Match main's convention: collection may be None at construction /
+        # pickle time; workers attach a client via create_client. Only index
+        # when a live collection was provided.
+        if collection is not None:
+            collection.create_index([(id, 1), ("kind", 1)])
 
     def __len__(self):
         return len(self.indices)
@@ -108,9 +134,13 @@ class MongoDataset(Dataset):
             for kind in self.fetch:
                 kind_docs = grouped.get((subject_id, kind), [])
                 if not kind_docs:
-                    continue
+                    # Don't return a partial dict (breaks mcollate). Raise so
+                    # MongoheadDataset's retry can ride out wirehead swaps.
+                    raise RuntimeError(
+                        f"missing kind {kind!r} for {self.id}={subject_id}"
+                    )
                 dtype = kind_docs[0]["dtype"]
-                t = self.transforms.get(dtype, lambda x: x)
+                t = self.transforms.get(dtype, _identity)
                 if dtype == "tensor":
                     binary = self.make_serial(kind_docs)
                     results[idx][kind] = self.normalize(t(binary).float())
