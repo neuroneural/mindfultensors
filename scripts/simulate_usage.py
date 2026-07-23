@@ -51,12 +51,12 @@ def populate(db):
         print(f"  inserting subject {sid}")
 
         torch.manual_seed(sid)
-        insert_kind(col, sid, "smri",       torch.rand(8, 8, 8), id_field=INDEX_ID, chunk_size_mb=CHUNK_SIZE)
-        insert_kind(col, sid, "falff",      torch.rand(8, 8, 8), id_field=INDEX_ID, chunk_size_mb=CHUNK_SIZE)
-        insert_kind(col, sid, "age",        subject["age"],        id_field=INDEX_ID)
-        insert_kind(col, sid, "gender",     subject["gender"],     id_field=INDEX_ID)
-        insert_kind(col, sid, "site",       subject["site"],       id_field=INDEX_ID)
-        insert_kind(col, sid, "is_control", subject["is_control"], id_field=INDEX_ID)
+        insert_kind(col, sid, "smri",       torch.rand(8, 8, 8), dtype="f32", id_field=INDEX_ID, chunk_size_mb=CHUNK_SIZE)
+        insert_kind(col, sid, "falff",      torch.rand(8, 8, 8), dtype="f32", id_field=INDEX_ID, chunk_size_mb=CHUNK_SIZE)
+        insert_kind(col, sid, "age",        subject["age"],        dtype="float", id_field=INDEX_ID)
+        insert_kind(col, sid, "gender",     subject["gender"],     dtype="int",   id_field=INDEX_ID)
+        insert_kind(col, sid, "site",       subject["site"],       dtype="str",   id_field=INDEX_ID)
+        insert_kind(col, sid, "is_control", subject["is_control"], dtype="bool",  id_field=INDEX_ID)
 
     col.create_index([(INDEX_ID, 1), ("kind", 1)])
     print(f"done. total docs: {col.count_documents({})}")

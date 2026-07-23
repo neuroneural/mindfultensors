@@ -36,7 +36,7 @@ def _identity(x):
 
 
 DEFAULT_TRANSFORMS = {
-    "tensor": mtransform,
+    "tensor": mtransform,   # deserializes a tensor kind's chunk bytes; fetched by the fixed "tensor" slot, not by a doc's normative dtype
     "int": _as_long,
     "float": _as_float,
     "bool": _as_bool,
@@ -80,8 +80,8 @@ class MongoDataset(Dataset):
             a live collection before __getitem__. Pass a collection at init only
             to create indexes, then clear it before pickling into workers.
         :param fetch: a tuple of kind names to be fetched, e.g. (`smri`, `gender_encoded`). Supports both chunk kinds (tensors) and scalar kinds (single value docs)
-        :param transforms: optional dict mapping dtype strings to transform functions, e.g. `{"int": lambda x: torch.tensor(x, dtype=torch.long)}`. Overrides DEFAULT_TRANSFORMS for the specified dtype.
-        :param normalize: a function to be applied to each tensor kind after transform
+        :param transforms: optional dict overriding DEFAULT_TRANSFORMS. Holds the `"tensor"` decoder (chunk bytes -> tensor) plus per-dtype scalar transforms, e.g. `{"int": lambda x: torch.tensor(x, dtype=torch.long)}`. Tensor kinds fetch the fixed `"tensor"` slot; scalar kinds are looked up by their dtype.
+        :param normalize: a function to be applied to each non-label tensor kind after transform
         :param fields: optional MongoDB projection dict, e.g. `{"id": 1, "kind": 1, "chunk": 1}`. Fetches all fields if not specified.
         :param id: the field to be used as an index. The `indices` are values of this field
         :returns: an object of MongoDataset class
@@ -139,13 +139,17 @@ class MongoDataset(Dataset):
                     raise RuntimeError(
                         f"missing kind {kind!r} for {self.id}={subject_id}"
                     )
-                dtype = kind_docs[0]["dtype"]
-                t = self.transforms.get(dtype, _identity)
-                if dtype == "tensor":
-                    binary = self.make_serial(kind_docs)
-                    results[idx][kind] = self.normalize(t(binary).float())
+                first = kind_docs[0]
+                if "chunk" in first:
+                    # dtype is normative: "long" -> label (cast, no normalize); else -> input (cast to float, normalize)
+                    tensor = self.transforms["tensor"](self.make_serial(kind_docs))
+                    if first["dtype"] == "long":
+                        results[idx][kind] = tensor.long()
+                    else:
+                        results[idx][kind] = self.normalize(tensor.float())
                 else:
-                    results[idx][kind] = t(kind_docs[0]["value"])
+                    t = self.transforms.get(first["dtype"], _identity)
+                    results[idx][kind] = t(first["value"])
 
         return results
 

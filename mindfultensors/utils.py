@@ -39,16 +39,20 @@ def tensor2bin(tensor):
     return buffer.getvalue()
 
 
-def build_kind_docs(subject_id, kind, value, id_field="id", chunk_size_mb=10):
+def build_kind_docs(subject_id, kind, value, dtype, id_field="id", chunk_size_mb=10):
     """Build the doc(s) for one kind (tensor or scalar), without touching the database.
 
     :param subject_id: the subject's index value, stored under `id_field`
-    :param kind: the kind name, e.g. `smri` or `age`
+    :param kind: the kind name, e.g. `smri` or `label3`
     :param value: a tensor (chunked and stored as binary) or a scalar (int/float/bool)
+    :param dtype: required, caller-declared, never inferred. Tensors: "long"=label (no normalize), else=input (cast float32, normalize). Scalars: selects the transform ("int"/"float"/"bool"/"str").
     :param id_field: the field name to store subject_id under
     :param chunk_size_mb: chunk size in MB for tensor kinds
     :returns: a list of docs ready to be inserted, e.g. via `insert_many`/`insert_one`
     """
+    if dtype is None:
+        raise ValueError(f"kind {kind!r} requires an explicit dtype")
+
     if torch.is_tensor(value):
         binary           = tensor2bin(value)
         chunk_size_bytes = chunk_size_mb * 1024 * 1024
@@ -60,7 +64,7 @@ def build_kind_docs(subject_id, kind, value, id_field="id", chunk_size_mb=10):
             docs.append({
                 id_field:   subject_id,
                 "kind":     kind,
-                "dtype":    "tensor",
+                "dtype":    dtype,
                 "chunk_id": chunk_id,
                 "chunk":    bson.Binary(binary[start:end]),
             })
@@ -69,22 +73,23 @@ def build_kind_docs(subject_id, kind, value, id_field="id", chunk_size_mb=10):
     return [{
         id_field: subject_id,
         "kind":   kind,
-        "dtype":  type(value).__name__,
+        "dtype":  dtype,
         "value":  value,
     }]
 
 
-def insert_kind(collection, subject_id, kind, value, id_field="id", chunk_size_mb=10):
+def insert_kind(collection, subject_id, kind, value, dtype, id_field="id", chunk_size_mb=10):
     """Insert a kind (tensor or scalar) into a unified collection.
 
     :param collection: pymongo collection to insert into
     :param subject_id: the subject's index value, stored under `id_field`
-    :param kind: the kind name, e.g. `smri` or `age`
+    :param kind: the kind name, e.g. `smri` or `label3`
     :param value: a tensor (chunked and stored as binary) or a scalar (int/float/bool)
+    :param dtype: required, always caller-declared. Tensor kinds: `"long"` for a label, e.g. `"f32"` for an input. Scalar kinds: `"int"`/`"float"`/`"bool"`/`"str"`. See `build_kind_docs`.
     :param id_field: the field name to store subject_id under
     :param chunk_size_mb: chunk size in MB for tensor kinds
     """
-    docs = build_kind_docs(subject_id, kind, value, id_field, chunk_size_mb)
+    docs = build_kind_docs(subject_id, kind, value, dtype, id_field, chunk_size_mb)
     if torch.is_tensor(value):
         collection.insert_many(docs)
     else:
